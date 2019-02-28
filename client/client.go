@@ -14,13 +14,15 @@ func chk(err error) {
 }
 
 func main() {
+	// Cargamos los certificados
+	cert, err := tls.LoadX509KeyPair("cert.pem", "key.pem")
+	chk(err)
+
 	// Configuracion de la conexion
-	conf := &tls.Config{
-		// InsecureSkipVerify: true,
-	}
+	conf := &tls.Config{Certificates: []tls.Certificate{cert}, InsecureSkipVerify: true}
 
 	// Conexion con el servidor
-	conn, err := tls.Dial("tcp", "localhost:1337", conf)
+	conn, err := tls.Dial("tcp", "127.0.0.1:8080", conf)
 	chk(err)
 	defer conn.Close()
 
