@@ -3,109 +3,171 @@ package main
 
 import (
 	"bytes"
+	"compress/zlib"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
-	"encoding/binary"
+	"crypto/sha256"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 )
 
-// ServerPassword clave de 32 bytes para AES
-const ServerPasword string = "e661e42b6cd1a627512d70462074fa22"
+/*
 
-type user struct {
-	Username [16]byte
-	Password [256]byte
+func obtenerListaUsuariosDesencriptada() usersList {
+
+	bytesUsuarios := decryptFile(ListaUsuariosFilename, ServerPasword)
+	usuarios := usersList{}
+	json.Unmarshal(bytesUsuarios, &usuarios)
+	return usuarios
 }
 
-//Encriptar usando AES
-func encrypt(data []byte, passphrase string) []byte {
-	block, _ := aes.NewCipher([]byte(passphrase))
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		panic(err.Error())
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
-		panic(err.Error())
-	}
-	ciphertext := gcm.Seal(nonce, nonce, data, nil)
-	return ciphertext
-}
+func guardarListaUsuariosEncriptada(usuarios usersList) {
+	jsonUsuarios, err := json.Marshal(usuarios)
 
-//Desencriptar usando AES
-func decrypt(data []byte, passphrase string) []byte {
-	key := []byte(passphrase)
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		panic(err.Error())
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		panic(err.Error())
-	}
-	nonceSize := gcm.NonceSize()
-	nonce, ciphertext := data[:nonceSize], data[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		panic(err.Error())
-	}
-	return plaintext
-}
-
-func encryptFile(filename string, data []byte, passphrase string) {
-	var fout *os.File // fichero de salida
-	var err error     // receptor de error
-
-	// abrimos el fichero de salida
-	fout, err = os.Open(filename)
-	// Si no existe el fichero, lo creamos.
-	if os.IsNotExist(err) {
-		fout, err = os.Create(filename)
-	}
-	// Si se produce algun error abortamos.
+	buf := &bytes.Buffer{}
+	err = binary.Write(buf, binary.LittleEndian, jsonUsuarios)
 	if err != nil {
 		panic(err)
 	}
-	defer fout.Close()
-
-	fout.Write(encrypt(data, passphrase))
+	encryptFile(ListaUsuariosFilename, buf.Bytes(), ServerPasword)
 }
 
-func decryptFile(filename string, passphrase string) []byte {
-	data, _ := ioutil.ReadFile(filename)
-	return decrypt(data, passphrase)
+func registrarUsuario(username string, password string) {
+	//Creamos el nuevo usuario
+	usuario := userStruct{}
+	copy(usuario.Username[:], username)
+	copy(usuario.Password[:], password)
+	//Obtenemos la lista de usuarios
+	usuarios := obtenerListaUsuariosDesencriptada()
+	//Anyadimos el usuario a la lista de usuarios
+	usuarios = append(usuarios, usuario)
+	//Guardamos la lista de usuarios encriptada
+	guardarListaUsuariosEncriptada(usuarios)
+}*/
+
+//UsernameMaxSize indica el tamaño máximo de los nombres de usuario
+const UsernameMaxSize = 16
+
+//PasswordMaxSize indica el tamaño máximo de las contraseñas
+const PasswordMaxSize = 128
+
+//ListaUsuariosFilename indica el nombre del archivo encriptado que contiene la lista de usuarios de la app
+const ficheroUsuarios = "usuarios"
+
+type userStruct struct {
+	Username [UsernameMaxSize]byte
+	Password [PasswordMaxSize]byte
 }
+
+type usersList []userStruct
 
 func handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Hi there!")
 }
 
-func main() {
-	buf := &bytes.Buffer{}
-	persona := user{}
-	copy(persona.Username[:], "carlosV")
-	copy(persona.Password[:], "clavesecreta")
-	jsonPersona, err := json.Marshal(persona)
-	err = binary.Write(buf, binary.LittleEndian, jsonPersona)
-	if err != nil {
-		panic(err)
+func check(e error) {
+	if e != nil {
+		panic(e)
 	}
-	encryptFile("usuarios", buf.Bytes(), ServerPasword)
-	byt := decryptFile("usuarios", ServerPasword)
+}
 
-	fmt.Printf("Desenc: %s\n", byt)
+//Guarda un usuario en un fichero encriptado
+func registrarUsuario(name string, password string, serverKey []byte, iv []byte) {
+	//Creamos el nuevo usuario
+	usuario := userStruct{}
+	copy(usuario.Username[:], name)
+	copy(usuario.Password[:], password)
+	//Convertimos a JSON
+	usuarioJSON, err := json.Marshal(usuario)
+	//Creamos fichero
+	var fout *os.File
+	fout, err = os.Create(ficheroUsuarios)
+	check(err)
+	defer fout.Close()
+	//Cifrar AES256 y escribir
+	var S cipher.Stream
+	block, err := aes.NewCipher(serverKey)
+	check(err)
+	S = cipher.NewCTR(block, iv[:16])
+	var rd io.Reader
+	var wr io.WriteCloser
+	var enc cipher.StreamWriter
+	enc.S = S
+	enc.W = fout
 
-	personaDecrypt := user{}
-	json.Unmarshal(byt, &personaDecrypt)
+	rd = bytes.NewReader(usuarioJSON)
 
-	fmt.Println("Username: ", personaDecrypt.Username)
-	fmt.Println("clavesecreta: ", personaDecrypt.Password)
+	wr = zlib.NewWriter(enc)
+	_, err = io.Copy(wr, rd)
+	check(err)
+	wr.Close()
+}
+
+func obtenerListaUsuarios(serverKey []byte, iv []byte) {
+
+	//Abrimos fichero
+	var fin *os.File
+	fin, err := os.Open(ficheroUsuarios)
+	check(err)
+	defer fin.Close()
+	//Desciframos
+	var S cipher.Stream
+	block, err := aes.NewCipher(serverKey)
+	check(err)
+	S = cipher.NewCTR(block, iv[:16])
+
+	var rd io.Reader
+	var dec cipher.StreamReader
+	dec.S = S
+	dec.R = fin
+
+	var dst bytes.Buffer
+
+	rd, err = zlib.NewReader(dec)
+	check(err)
+
+	_, err = io.Copy(&dst, rd)
+	check(err)
+
+	usuario := userStruct{}
+
+	err = json.Unmarshal(dst.Bytes(), &usuario)
+
+	fmt.Println("Usuariooo: ", string(usuario.Username[:UsernameMaxSize]))
+	fmt.Println("PASS: ", string(usuario.Password[:PasswordMaxSize]))
+}
+
+func main() {
+
+	//flags
+	pK := flag.String("k", "", "clave del servidor para cifrar y descifrar")
+
+	flag.Parse()
+
+	if *pK == "" {
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
+
+	// hash de clave e IV
+	h := sha256.New()
+	h.Reset()
+	_, err := h.Write([]byte(*pK))
+	check(err)
+	key := h.Sum(nil)
+
+	h.Reset()
+	_, err = h.Write([]byte("<inicializar>"))
+	check(err)
+	iv := h.Sum(nil)
+
+	registrarUsuario("carlos", "root", key, iv)
+	obtenerListaUsuarios(key, iv)
+
 	//http.HandleFunc("/", handler)
 	//http.ListenAndServeTLS(":8080", "cert.pem", "key.pem", nil)
 }
