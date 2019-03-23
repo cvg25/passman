@@ -75,19 +75,29 @@ func check(e error) {
 	}
 }
 
-//Guarda un usuario en un fichero encriptado
+//Guarda un usuario en un fichero encriptado con nombre "usuarios"
 func registrarUsuario(name string, password string, serverKey []byte, iv []byte) {
+
+	//Cargamos la lista de usuarios descifrada
+	listaUsuarios := obtenerListaUsuarios(serverKey, iv)
+
 	//Creamos el nuevo usuario
 	usuario := userStruct{}
 	copy(usuario.Username[:], name)
 	copy(usuario.Password[:], password)
-	//Convertimos a JSON
-	usuarioJSON, err := json.Marshal(usuario)
-	//Creamos fichero
+
+	//Metemos el nuevo usuario en la lista de usuarios
+	listaUsuarios = append(listaUsuarios, usuario)
+
+	//Convertimos a JSON la lista
+	listaUsuariosJSON, err := json.Marshal(listaUsuarios)
+
+	//Creamos el fichero
 	var fout *os.File
 	fout, err = os.Create(ficheroUsuarios)
 	check(err)
 	defer fout.Close()
+
 	//Cifrar AES256 y escribir
 	var S cipher.Stream
 	block, err := aes.NewCipher(serverKey)
@@ -99,7 +109,7 @@ func registrarUsuario(name string, password string, serverKey []byte, iv []byte)
 	enc.S = S
 	enc.W = fout
 
-	rd = bytes.NewReader(usuarioJSON)
+	rd = bytes.NewReader(listaUsuariosJSON)
 
 	wr = zlib.NewWriter(enc)
 	_, err = io.Copy(wr, rd)
@@ -107,38 +117,42 @@ func registrarUsuario(name string, password string, serverKey []byte, iv []byte)
 	wr.Close()
 }
 
-func obtenerListaUsuarios(serverKey []byte, iv []byte) {
+// obtenerListaUsuarios obtiene la lista de usuarios que ya existen o devuelve una lista vacia, si no existe ninguno.
+func obtenerListaUsuarios(serverKey []byte, iv []byte) usersList {
 
-	//Abrimos fichero
-	var fin *os.File
-	fin, err := os.Open(ficheroUsuarios)
-	check(err)
-	defer fin.Close()
-	//Desciframos
-	var S cipher.Stream
-	block, err := aes.NewCipher(serverKey)
-	check(err)
-	S = cipher.NewCTR(block, iv[:16])
+	listaUsuarios := usersList{}
 
-	var rd io.Reader
-	var dec cipher.StreamReader
-	dec.S = S
-	dec.R = fin
+	//Comprobamos si existe el fichero de usuarios
+	_, err := os.Stat(ficheroUsuarios)
+	if !os.IsNotExist(err) {
+		//Si que existe, abrimos el fichero para descifrarlo y devolver la lista de usuarios.
+		var fin *os.File
+		fin, err = os.Open(ficheroUsuarios)
+		check(err)
+		defer fin.Close()
+		//Desciframos
+		var S cipher.Stream
+		block, err := aes.NewCipher(serverKey)
+		check(err)
+		S = cipher.NewCTR(block, iv[:16])
 
-	var dst bytes.Buffer
+		var rd io.Reader
+		var dec cipher.StreamReader
+		dec.S = S
+		dec.R = fin
 
-	rd, err = zlib.NewReader(dec)
-	check(err)
+		var dst bytes.Buffer
 
-	_, err = io.Copy(&dst, rd)
-	check(err)
+		rd, err = zlib.NewReader(dec)
+		check(err)
 
-	usuario := userStruct{}
+		_, err = io.Copy(&dst, rd)
+		check(err)
 
-	err = json.Unmarshal(dst.Bytes(), &usuario)
+		err = json.Unmarshal(dst.Bytes(), &listaUsuarios)
+	}
 
-	fmt.Println("Usuariooo: ", string(usuario.Username[:UsernameMaxSize]))
-	fmt.Println("PASS: ", string(usuario.Password[:PasswordMaxSize]))
+	return listaUsuarios
 }
 
 func main() {
@@ -166,8 +180,9 @@ func main() {
 	iv := h.Sum(nil)
 
 	registrarUsuario("carlos", "root", key, iv)
-	obtenerListaUsuarios(key, iv)
+	listaUsuarios := obtenerListaUsuarios(key, iv)
 
+	fmt.Println(listaUsuarios)
 	//http.HandleFunc("/", handler)
 	//http.ListenAndServeTLS(":8080", "cert.pem", "key.pem", nil)
 }
