@@ -15,40 +15,6 @@ import (
 	"os"
 )
 
-/*
-
-func obtenerListaUsuariosDesencriptada() usersList {
-
-	bytesUsuarios := decryptFile(ListaUsuariosFilename, ServerPasword)
-	usuarios := usersList{}
-	json.Unmarshal(bytesUsuarios, &usuarios)
-	return usuarios
-}
-
-func guardarListaUsuariosEncriptada(usuarios usersList) {
-	jsonUsuarios, err := json.Marshal(usuarios)
-
-	buf := &bytes.Buffer{}
-	err = binary.Write(buf, binary.LittleEndian, jsonUsuarios)
-	if err != nil {
-		panic(err)
-	}
-	encryptFile(ListaUsuariosFilename, buf.Bytes(), ServerPasword)
-}
-
-func registrarUsuario(username string, password string) {
-	//Creamos el nuevo usuario
-	usuario := userStruct{}
-	copy(usuario.Username[:], username)
-	copy(usuario.Password[:], password)
-	//Obtenemos la lista de usuarios
-	usuarios := obtenerListaUsuariosDesencriptada()
-	//Anyadimos el usuario a la lista de usuarios
-	usuarios = append(usuarios, usuario)
-	//Guardamos la lista de usuarios encriptada
-	guardarListaUsuariosEncriptada(usuarios)
-}*/
-
 //UsernameMaxSize indica el tamaño máximo de los nombres de usuario
 const UsernameMaxSize = 16
 
@@ -179,7 +145,7 @@ func main() {
 	check(err)
 	iv := h.Sum(nil)
 
-	registrarUsuario("carlos", "root", key, iv)
+	//registrarUsuario("carlos", "root", key, iv)
 	listaUsuarios := obtenerListaUsuarios(key, iv)
 
 	fmt.Println(listaUsuarios)
