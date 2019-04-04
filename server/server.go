@@ -25,15 +25,15 @@ type User struct {
 	Data map[string]string // datos adicionales del usuario
 }
 
-// Respuesta del servidor
-type resp struct {
+// Resp estructura para la respuesta del servidor
+type Resp struct {
 	Ok  bool   // true -> correcto, false -> error
 	Msg string // mensaje adicional
 }
 
 // función para escribir una respuesta del servidor
 func response(w io.Writer, ok bool, msg string) {
-	r := resp{Ok: ok, Msg: msg}    // formateamos respuesta
+	r := Resp{Ok: ok, Msg: msg}    // formateamos respuesta
 	rJSON, err := json.Marshal(&r) // codificamos en JSON
 	chk(err)                       // comprobamos error
 	w.Write(rJSON)                 // escribimos el JSON resultante
@@ -46,26 +46,31 @@ func decode64(s string) []byte {
 	return b                                     // devolvemos los datos originales
 }
 
+// Registro
+func register(w http.ResponseWriter, req *http.Request) {
+	user := User{}
+	user.Name = req.Form.Get("user")               // nombre
+	user.Salt = make([]byte, 16)                   // sal (16 bytes == 128 bits)
+	rand.Read(user.Salt)                           // la sal es aleatoria
+	user.Data = make(map[string]string)            // reservamos mapa de datos de usuario
+	user.Data["private"] = req.Form.Get("privkey") // clave privada
+	user.Data["public"] = req.Form.Get("pubkey")   // clave pública
+	password := decode64(req.Form.Get("password")) // contraseña (keyLogin)
+
+	// "hasheamos" la contraseña con scrypt
+	user.Hash, _ = scrypt.Key(password, user.Salt, 16384, 8, 1, 32)
+
+	response(w, false, "Aqui se registra el usuario")
+}
+
+// Manejador de las peticiones
 func handler(w http.ResponseWriter, req *http.Request) {
 	req.ParseForm()                              // es necesario parsear el formulario
 	w.Header().Set("Content-Type", "text/plain") // cabecera estándar
 
 	switch req.Form.Get("cmd") { // comprobamos comando desde el cliente
 	case "register": // ** registro
-		user := User{}
-		user.Name = req.Form.Get("user")               // nombre
-		user.Salt = make([]byte, 16)                   // sal (16 bytes == 128 bits)
-		rand.Read(user.Salt)                           // la sal es aleatoria
-		user.Data = make(map[string]string)            // reservamos mapa de datos de usuario
-		user.Data["private"] = req.Form.Get("privkey") // clave privada
-		user.Data["public"] = req.Form.Get("pubkey")   // clave pública
-		password := decode64(req.Form.Get("password")) // contraseña (keyLogin)
-
-		// "hasheamos" la contraseña con scrypt
-		user.Hash, _ = scrypt.Key(password, user.Salt, 16384, 8, 1, 32)
-
-		response(w, false, "Aqui se registra el usuario")
-
+		register(w, req)
 	default:
 		response(w, false, "Comando inválido")
 	}
