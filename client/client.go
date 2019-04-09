@@ -9,11 +9,9 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha512"
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -83,31 +81,12 @@ func register() {
 
 	// hash con SHA512 de la contraseña
 	key := sha512.Sum512([]byte(password))
-	keyLogin := key[:32]  // una mitad para el login (256 bits)
-	keyData := key[32:64] // la otra para los datos (256 bits)
-
-	// generamos un par de claves (privada, pública) para el servidor
-	privateKey, err := rsa.GenerateKey(rand.Reader, 1024)
-	chk(err)
-	privateKey.Precompute() // aceleramos su uso con un precálculo
-
-	privkJSON, err := json.Marshal(&privateKey) // codificamos con JSON
-	chk(err)
-
-	publicKey := privateKey.Public()          // extraemos la clave pública por separado
-	pubkJSON, err := json.Marshal(&publicKey) // y codificamos con JSON
-	chk(err)
+	keyLogin := key[:32] // una mitad para el login (256 bits)
 
 	data := url.Values{}                     // estructura para contener los valores
 	data.Set("cmd", "register")              // comando (string)
 	data.Set("user", user)                   // usuario (string)
 	data.Set("password", encode64(keyLogin)) // "contraseña" a base64
-
-	// comprimimos y codificamos la clave pública
-	data.Set("pubkey", encode64(compress(pubkJSON)))
-
-	// comprimimos, ciframos y codificamos la clave privada
-	data.Set("privkey", encode64(encrypt(compress(privkJSON), keyData)))
 
 	r, err := client.PostForm("https://localhost:8080", data) // enviamos por POST
 	chk(err)
