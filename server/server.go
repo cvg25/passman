@@ -25,11 +25,12 @@ const PasswordMaxSize = 128
 const ficheroUsuarios = "usuarios"
 
 type userStruct struct {
-	Username [UsernameMaxSize]byte
-	Password [PasswordMaxSize]byte
+	Username string
+	Password string
 }
 
-type usersList []userStruct
+//Mapa con todos los usuarios
+type usersList map[string]userStruct
 
 func handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Hi there!")
@@ -49,11 +50,11 @@ func registrarUsuario(name string, password string, serverKey []byte, iv []byte)
 
 	//Creamos el nuevo usuario
 	usuario := userStruct{}
-	copy(usuario.Username[:], name)
-	copy(usuario.Password[:], password)
+	usuario.Username = name
+	usuario.Password = password
 
 	//Metemos el nuevo usuario en la lista de usuarios
-	listaUsuarios = append(listaUsuarios, usuario)
+	listaUsuarios[usuario.Username] = usuario
 
 	//Convertimos a JSON la lista
 	listaUsuariosJSON, err := json.Marshal(listaUsuarios)
@@ -86,7 +87,8 @@ func registrarUsuario(name string, password string, serverKey []byte, iv []byte)
 // obtenerListaUsuarios obtiene la lista de usuarios que ya existen o devuelve una lista vacia, si no existe ninguno.
 func obtenerListaUsuarios(serverKey []byte, iv []byte) usersList {
 
-	listaUsuarios := usersList{}
+	//listaUsuarios := usersList{}
+	listaUsuarios := make(map[string]userStruct)
 
 	//Comprobamos si existe el fichero de usuarios
 	_, err := os.Stat(ficheroUsuarios)
@@ -145,10 +147,10 @@ func main() {
 	check(err)
 	iv := h.Sum(nil)
 
-	//registrarUsuario("carlos", "root", key, iv)
-	listaUsuarios := obtenerListaUsuarios(key, iv)
+	registrarUsuario("paco", "wildo", key, iv)
+	//listaUsuarios := obtenerListaUsuarios(key, iv)
 
-	fmt.Println(listaUsuarios)
+	//fmt.Println(listaUsuarios)
 	//http.HandleFunc("/", handler)
 	//http.ListenAndServeTLS(":8080", "cert.pem", "key.pem", nil)
 }
