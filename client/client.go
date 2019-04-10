@@ -12,9 +12,10 @@ import (
 	"crypto/sha512"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -25,9 +26,16 @@ import (
 
 var client *http.Client
 
+// Resp estructura para la respuesta del servidor
+type Resp struct {
+	Ok  bool   // true -> correcto, false -> error
+	Msg string // mensaje adicional
+}
+
 func chk(err error) {
 	if err != nil {
-		panic(err)
+		fmt.Println("ERROR: " + err.Error())
+		os.Exit(1)
 	}
 }
 
@@ -57,16 +65,16 @@ func compress(data []byte) []byte {
 }
 
 // Funcion para leer el usuario y la contraseña
-func readUserData() (user string, password string) {
+func readUserCredentials() (user string, password string) {
 	reader := bufio.NewReader(os.Stdin) // reader para la entrada estándar (teclado)
 
-	fmt.Print("Usuario: ")
+	fmt.Print("Usuario de Passman: ")
 	user, err := reader.ReadString('\n')
 	// Eliminamos el salto de linea
 	user = strings.TrimRight(user, "\r\n")
 	chk(err)
 
-	fmt.Print("Contraseña: ")
+	fmt.Print("Contraseña de Passman: ")
 	// Ocultamos la contraseña mientras se escribe
 	passwordBytes, err := terminal.ReadPassword(0)
 	password = string(passwordBytes)
@@ -77,7 +85,7 @@ func readUserData() (user string, password string) {
 }
 
 func register() {
-	user, password := readUserData()
+	user, password := readUserCredentials()
 
 	// hash con SHA512 de la contraseña
 	key := sha512.Sum512([]byte(password))
@@ -88,37 +96,71 @@ func register() {
 	data.Set("user", user)                   // usuario (string)
 	data.Set("password", encode64(keyLogin)) // "contraseña" a base64
 
-	r, err := client.PostForm("https://localhost:8080", data) // enviamos por POST
+	resp, err := client.PostForm("https://localhost:8080", data) // enviamos por POST
 	chk(err)
-	io.Copy(os.Stdout, r.Body) // mostramos el cuerpo de la respuesta (es un reader)
-	fmt.Println()
 
-}
-
-func login() {
-	fmt.Println("Login")
+	// Leemos el cuerpo y mostramos el mensaje
+	body, _ := ioutil.ReadAll(resp.Body)
+	r := Resp{}
+	json.Unmarshal(body, &r)
+	fmt.Println(r.Msg)
 }
 
 func addPassword() {
-	fmt.Println("Añadir contraseña")
+	user, password := readUserCredentials()
+
+	// hash con SHA512 de la contraseña
+	key := sha512.Sum512([]byte(password))
+	keyLogin := key[:32] // una mitad para el login (256 bits)
+
+	data := url.Values{}                     // estructura para contener los valores
+	data.Set("cmd", "uploadPasswords")       // comando (string)
+	data.Set("user", user)                   // usuario (string)
+	data.Set("password", encode64(keyLogin)) // "contraseña" a base64
+
+	resp, err := client.PostForm("https://localhost:8080", data) // enviamos por POST
+	chk(err)
+
+	// Leemos el cuerpo y mostramos el mensaje
+	body, _ := ioutil.ReadAll(resp.Body)
+	r := Resp{}
+	json.Unmarshal(body, &r)
+	fmt.Println(r.Msg)
 }
 
 func listPasswords() {
-	fmt.Println("Listar contraseñas")
+	user, password := readUserCredentials()
+
+	// hash con SHA512 de la contraseña
+	key := sha512.Sum512([]byte(password))
+	keyLogin := key[:32] // una mitad para el login (256 bits)
+
+	data := url.Values{}                     // estructura para contener los valores
+	data.Set("cmd", "downloadPasswords")     // comando (string)
+	data.Set("user", user)                   // usuario (string)
+	data.Set("password", encode64(keyLogin)) // "contraseña" a base64
+
+	resp, err := client.PostForm("https://localhost:8080", data) // enviamos por POST
+	chk(err)
+
+	// Leemos el cuerpo y mostramos el mensaje
+	body, _ := ioutil.ReadAll(resp.Body)
+	r := Resp{}
+	json.Unmarshal(body, &r)
+	fmt.Println(r.Msg)
 }
 
 func main() {
 
 	// Definicion de los flags
 	fRegister := flag.Bool("R", false, "Registro")
-	fLogin := flag.Bool("L", false, "Login")
 	fAddPasswd := flag.Bool("a", false, "Añadir una contraseña")
 	fListPasswds := flag.Bool("ls", false, "Recuperar la lista de contraseñas")
 
 	flag.Parse()
 
 	// Comprobamos si no se ha introducido ninguno
-	if !*fRegister && !*fLogin && !*fAddPasswd && !*fListPasswds {
+	if !*fRegister && !*fAddPasswd && !*fListPasswds {
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
@@ -134,8 +176,6 @@ func main() {
 	switch {
 	case *fRegister:
 		register()
-	case *fLogin:
-		login()
 	case *fAddPasswd:
 		addPassword()
 	case *fListPasswds:
