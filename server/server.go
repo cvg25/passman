@@ -23,9 +23,10 @@ import (
 //ListaUsuariosFilename indica el nombre del archivo encriptado que contiene la lista de usuarios de la app
 const ficheroUsuarios = "usuarios"
 
-func check(err error) {
+func chk(err error) {
 	if err != nil {
-		panic(err)
+		fmt.Println("ERROR: " + err.Error())
+		os.Exit(1)
 	}
 }
 
@@ -57,14 +58,14 @@ type Resp struct {
 func response(w io.Writer, ok bool, msg string) {
 	r := Resp{Ok: ok, Msg: msg}    // formateamos respuesta
 	rJSON, err := json.Marshal(&r) // codificamos en JSON
-	check(err)                     // comprobamos error
+	chk(err)                       // comprobamos error
 	w.Write(rJSON)                 // escribimos el JSON resultante
 }
 
 // función para decodificar de string a []bytes (Base64)
 func decode64(s string) []byte {
 	b, err := base64.StdEncoding.DecodeString(s) // recupera el formato original
-	check(err)                                   // comprobamos el error
+	chk(err)                                     // comprobamos el error
 	return b                                     // devolvemos los datos originales
 }
 
@@ -88,6 +89,34 @@ func register(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// Manejador para subir archivo de contraseñas
+func uploadPasswords(w http.ResponseWriter, req *http.Request) {
+	user := req.Form.Get("user")
+	password := decode64(req.Form.Get("password"))
+
+	logeado, err := login(user, password)
+	if err != nil {
+		response(w, logeado, err.Error())
+	} else {
+		response(w, logeado, "Logeado correctamente")
+		// Rellenar aqui
+	}
+}
+
+// Manejador para recuperar archivo de contraseñas
+func downloadPasswords(w http.ResponseWriter, req *http.Request) {
+	user := req.Form.Get("user")
+	password := decode64(req.Form.Get("password"))
+
+	logeado, err := login(user, password)
+	if err != nil {
+		response(w, logeado, err.Error())
+	} else {
+		response(w, logeado, "Logeado correctamente")
+		// Rellenar aqui
+	}
+}
+
 // Manejador de las peticiones
 func handler(w http.ResponseWriter, req *http.Request) {
 	req.ParseForm()                              // es necesario parsear el formulario
@@ -96,12 +125,40 @@ func handler(w http.ResponseWriter, req *http.Request) {
 	switch req.Form.Get("cmd") { // comprobamos comando desde el cliente
 	case "register": // ** registro
 		register(w, req)
+	case "uploadPasswords": // ** Subir archivo de contraseñas
+		uploadPasswords(w, req)
+	case "downloadPasswords": // ** Recuperar archivo de contraseñas
+		downloadPasswords(w, req)
 	default:
-		response(w, false, "Comando inválido")
+		response(w, false, "ERROR: Comando inválido")
 	}
 }
 
-//Guarda un usuario en un fichero encriptado con nombre "usuarios"
+// Login
+func login(name string, password []byte) (bool, error) {
+	// Obtenemos la lista de usuarios
+	listaUsuarios, err := obtenerListaUsuarios()
+	if err != nil {
+		return false, err
+	}
+
+	// Comprobamos si existe
+	if _, existe := listaUsuarios[name]; existe {
+		salt := listaUsuarios[name].Salt
+		hash, _ := scrypt.Key(password, salt, 16384, 8, 1, 32)
+
+		// Comparamos el hash del password con el salt
+		if bytes.Compare(hash, listaUsuarios[name].Hash) == 0 {
+			return true, nil
+		} else {
+			return false, errors.New("ERROR: Credenciales inválidas")
+		}
+	} else {
+		return false, errors.New("ERROR: Credenciales inválidas")
+	}
+}
+
+// Guarda un usuario en un fichero encriptado con nombre "usuarios"
 func registrarUsuario(usuario userStruct) (bool, error) {
 
 	//Cargamos la lista de usuarios descifrada
@@ -111,7 +168,7 @@ func registrarUsuario(usuario userStruct) (bool, error) {
 	}
 
 	if _, existe := listaUsuarios[usuario.Name]; existe {
-		return false, errors.New("el nombre de usuario ya existe")
+		return false, errors.New("ERROR: El nombre de usuario ya existe")
 	}
 	//Metemos el nuevo usuario en la lista de usuarios
 	listaUsuarios[usuario.Name] = usuario
@@ -216,12 +273,12 @@ func main() {
 	h := sha256.New()
 	h.Reset()
 	_, err := h.Write([]byte(*pK))
-	check(err)
+	chk(err)
 	key := h.Sum(nil)
 
 	h.Reset()
 	_, err = h.Write([]byte("<inicializar>"))
-	check(err)
+	chk(err)
 	iv := h.Sum(nil)
 
 	//Guardamos las claves generadas en una variable global
@@ -233,10 +290,10 @@ func main() {
 	 */
 	_, err = obtenerListaUsuarios()
 	if err != nil {
-		fmt.Println("ERROR: contraseña inválida")
+		fmt.Println("ERROR: Contraseña inválida")
 		os.Exit(1)
 	}
 
 	http.HandleFunc("/", handler)
-	check(http.ListenAndServeTLS(":8080", "cert.pem", "key.pem", nil))
+	chk(http.ListenAndServeTLS(":8080", "cert.pem", "key.pem", nil))
 }
