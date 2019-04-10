@@ -257,7 +257,19 @@ func listPasswords() {
 		chk(err)
 	}
 
-	fmt.Printf("%v\n", passwordsList)
+	passwordsListJSON, err := json.MarshalIndent(passwordsList, "", "  ")
+	if err != nil {
+		chk(err)
+	}
+
+	if len(passwordsList) == 0 {
+		fmt.Println()
+		fmt.Println("Todavía no tienes contraseñas guardadas. Prueba a utilizar la opción -a")
+	} else {
+		fmt.Println()
+		fmt.Println("Estas son tus contraseñas:")
+		fmt.Println(string(passwordsListJSON))
+	}
 }
 
 func main() {

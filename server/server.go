@@ -27,7 +27,7 @@ const ficheroUsuarios = "usuarios"
 
 func chk(err error) {
 	if err != nil {
-		fmt.Println("ERROR: " + err.Error())
+		fmt.Println("" + err.Error())
 		os.Exit(1)
 	}
 }
@@ -127,13 +127,13 @@ func uploadPasswords(w http.ResponseWriter, req *http.Request) {
 
 	logeado, err := login(user, password)
 	if err != nil {
-		response(w, logeado, "ERROR: Error en el servidor")
+		response(w, logeado, "Error en el servidor")
 		return
 	} else {
 		//obtenemos el nombre del fichero del usuario
 		nombreFichero, err := obtenerNombreFicheroUsuario(user)
 		if err != nil {
-			response(w, false, "ERROR: Error en el servidor")
+			response(w, false, "Error en el servidor")
 			return
 		}
 		//Creamos el fichero
@@ -162,7 +162,7 @@ func downloadPasswords(w http.ResponseWriter, req *http.Request) {
 	} else {
 		nombreFichero, err := obtenerNombreFicheroUsuario(user)
 		if err != nil {
-			response(w, false, "ERROR: Error en el servidor")
+			response(w, false, "Error en el servidor")
 			return
 		}
 		//Comprobamos si existe el fichero de usuarios
@@ -171,7 +171,7 @@ func downloadPasswords(w http.ResponseWriter, req *http.Request) {
 			//Si que existe, lo abrimos y leemos todo.
 			data, err := ioutil.ReadFile(nombreFichero)
 			if err != nil {
-				response(w, false, "ERROR: Error en el servidor")
+				response(w, false, "Error en el servidor")
 				return
 			}
 
@@ -195,7 +195,7 @@ func handler(w http.ResponseWriter, req *http.Request) {
 	case "downloadPasswords": // ** Recuperar archivo de contraseñas
 		downloadPasswords(w, req)
 	default:
-		response(w, false, "ERROR: Comando inválido")
+		response(w, false, "Comando inválido")
 	}
 }
 
@@ -216,10 +216,10 @@ func login(name string, password []byte) (bool, error) {
 		if bytes.Compare(hash, listaUsuarios[name].Hash) == 0 {
 			return true, nil
 		} else {
-			return false, errors.New("ERROR: Credenciales inválidas")
+			return false, errors.New("Credenciales inválidas")
 		}
 	} else {
-		return false, errors.New("ERROR: Credenciales inválidas")
+		return false, errors.New("Credenciales inválidas")
 	}
 }
 
@@ -233,7 +233,7 @@ func registrarUsuario(usuario userStruct) (bool, error) {
 	}
 
 	if _, existe := listaUsuarios[usuario.Name]; existe {
-		return false, errors.New("ERROR: El nombre de usuario ya existe")
+		return false, errors.New("El nombre de usuario ya existe")
 	}
 	//Metemos el nuevo usuario en la lista de usuarios
 	listaUsuarios[usuario.Name] = usuario
@@ -355,7 +355,7 @@ func main() {
 	 */
 	_, err = obtenerListaUsuarios()
 	if err != nil {
-		fmt.Println("ERROR: Contraseña inválida")
+		fmt.Println("Contraseña inválida")
 		os.Exit(1)
 	}
 
