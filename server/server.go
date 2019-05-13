@@ -14,8 +14,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
 
 	"golang.org/x/crypto/scrypt"
 )
@@ -25,7 +27,7 @@ const ficheroUsuarios = "usuarios"
 
 func chk(err error) {
 	if err != nil {
-		fmt.Println("ERROR: " + err.Error())
+		fmt.Println("" + err.Error())
 		os.Exit(1)
 	}
 }
@@ -39,6 +41,7 @@ var serverKeys serverKeysStruct
 
 // User estrucutra para los usuarios
 type userStruct struct {
+	UUID []byte            // identificador de usuario, nombre de fichero personal
 	Name string            // nombre de usuario
 	Hash []byte            // hash de la contraseña
 	Salt []byte            // sal para la contraseña
@@ -69,9 +72,20 @@ func decode64(s string) []byte {
 	return b                                     // devolvemos los datos originales
 }
 
+// función para codificar de []bytes a string (Base64)
+func encode64(data []byte) string {
+	return base64.StdEncoding.EncodeToString(data) // sólo utiliza caracteres "imprimibles"
+}
+
 // Registro
 func register(w http.ResponseWriter, req *http.Request) {
+	uuid, err := exec.Command("uuidgen").Output()
+	if err != nil {
+		response(w, false, err.Error())
+		return
+	}
 	user := userStruct{}
+	user.UUID = uuid
 	user.Name = req.Form.Get("user")               // nombre
 	user.Salt = make([]byte, 16)                   // sal (16 bytes == 128 bits)
 	rand.Read(user.Salt)                           // la sal es aleatoria
@@ -84,22 +98,56 @@ func register(w http.ResponseWriter, req *http.Request) {
 	resultado, err := registrarUsuario(user)
 	if err != nil {
 		response(w, resultado, err.Error())
-	} else {
-		response(w, resultado, "Usuario registrado con exito.")
+		return
 	}
+	response(w, resultado, "Usuario registrado con exito.")
+}
+
+func obtenerNombreFicheroUsuario(name string) (string, error) {
+
+	listaUsuarios, err := obtenerListaUsuarios()
+	if err != nil {
+		return "", err
+	}
+
+	if usuario, existe := listaUsuarios[name]; existe {
+
+		return "user_" + string(usuario.UUID), nil
+	}
+
+	return "", errors.New("No existe el nombre del fichero")
+
 }
 
 // Manejador para subir archivo de contraseñas
 func uploadPasswords(w http.ResponseWriter, req *http.Request) {
 	user := req.Form.Get("user")
 	password := decode64(req.Form.Get("password"))
+	data := decode64(req.Form.Get("data"))
 
 	logeado, err := login(user, password)
 	if err != nil {
-		response(w, logeado, err.Error())
+		response(w, logeado, "Error en el servidor")
+		return
 	} else {
-		response(w, logeado, "Logeado correctamente")
-		// Rellenar aqui
+		//obtenemos el nombre del fichero del usuario
+		nombreFichero, err := obtenerNombreFicheroUsuario(user)
+		if err != nil {
+			response(w, false, "Error en el servidor")
+			return
+		}
+		//Creamos el fichero
+		var fout *os.File
+		fout, err = os.Create(nombreFichero)
+		if err != nil {
+			response(w, false, err.Error())
+			return
+		}
+		defer fout.Close()
+		//Escribimos los datos
+		fout.Write(data)
+
+		response(w, true, "Se ha añadido correctamente")
 	}
 }
 
@@ -112,8 +160,25 @@ func downloadPasswords(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		response(w, logeado, err.Error())
 	} else {
-		response(w, logeado, "Logeado correctamente")
-		// Rellenar aqui
+		nombreFichero, err := obtenerNombreFicheroUsuario(user)
+		if err != nil {
+			response(w, false, "Error en el servidor")
+			return
+		}
+		//Comprobamos si existe el fichero de usuarios
+		_, err = os.Stat(nombreFichero)
+		if !os.IsNotExist(err) {
+			//Si que existe, lo abrimos y leemos todo.
+			data, err := ioutil.ReadFile(nombreFichero)
+			if err != nil {
+				response(w, false, "Error en el servidor")
+				return
+			}
+
+			response(w, true, encode64(data))
+		} else {
+			response(w, true, encode64([]byte{}))
+		}
 	}
 }
 
@@ -130,7 +195,7 @@ func handler(w http.ResponseWriter, req *http.Request) {
 	case "downloadPasswords": // ** Recuperar archivo de contraseñas
 		downloadPasswords(w, req)
 	default:
-		response(w, false, "ERROR: Comando inválido")
+		response(w, false, "Comando inválido")
 	}
 }
 
@@ -151,10 +216,10 @@ func login(name string, password []byte) (bool, error) {
 		if bytes.Compare(hash, listaUsuarios[name].Hash) == 0 {
 			return true, nil
 		} else {
-			return false, errors.New("ERROR: Credenciales inválidas")
+			return false, errors.New("Credenciales inválidas")
 		}
 	} else {
-		return false, errors.New("ERROR: Credenciales inválidas")
+		return false, errors.New("Credenciales inválidas")
 	}
 }
 
@@ -168,7 +233,7 @@ func registrarUsuario(usuario userStruct) (bool, error) {
 	}
 
 	if _, existe := listaUsuarios[usuario.Name]; existe {
-		return false, errors.New("ERROR: El nombre de usuario ya existe")
+		return false, errors.New("El nombre de usuario ya existe")
 	}
 	//Metemos el nuevo usuario en la lista de usuarios
 	listaUsuarios[usuario.Name] = usuario
@@ -290,7 +355,7 @@ func main() {
 	 */
 	_, err = obtenerListaUsuarios()
 	if err != nil {
-		fmt.Println("ERROR: Contraseña inválida")
+		fmt.Println("Contraseña inválida")
 		os.Exit(1)
 	}
 
